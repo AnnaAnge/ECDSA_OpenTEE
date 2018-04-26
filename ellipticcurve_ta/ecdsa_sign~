@@ -1,0 +1,103 @@
+
+/////////////////////////// ECDSA sign //////////////////////////////////
+
+static uint32_t ECDSA_sig(uint32_t curve, uint32_t keysize, uint32_t alg, uint32_t param_types, TEE_Param params[4])
+{
+	if ((TEE_PARAM_TYPE_GET(param_types, 0) != TEE_PARAM_TYPE_MEMREF_INPUT) && 	//inta || kai ta ekana &&
+        (TEE_PARAM_TYPE_GET(param_types, 1) != TEE_PARAM_TYPE_MEMREF_OUTPUT) && 
+        (TEE_PARAM_TYPE_GET(param_types, 2) != TEE_PARAM_TYPE_MEMREF_OUTPUT) && 
+        (TEE_PARAM_TYPE_GET(param_types, 3) != TEE_PARAM_TYPE_MEMREF_OUTPUT)) {
+        	OT_LOG(LOG_ERR, "Bad parameter at index 0: expexted memory input or output");
+        	return TEE_ERROR_BAD_PARAMETERS;
+    		}
+
+	TEE_Result ret;
+	TEE_ObjectHandle ecdsa_keypair = (TEE_ObjectHandle)NULL;
+	TEE_Attribute ecdsa_attrs[1];
+	size_t key_size = keysize; //will be set as 256
+	uint32_t ecdsa_alg = alg; // will be set as TEE_ALG_ECDSA_P256
+	//char *dig_msg = "ASKLKlkLKLKaksaSDSKkjknsdjJF";							//
+	uint32_t fn_ret = 1; // Initialized error return 
+
+	uint32_t dig_len;	//						//
+	// enough for a p521 sig 
+	uint32_t sig_len = 256;
+
+	//void *dig = NULL; 			//								
+	void *sig = NULL;							//
+
+	//dig = TEE_Malloc(dig_len, 0);						//
+	sig = TEE_Malloc(sig_len, 0);						//
+	/*if (!dig || !sig) {							//
+		PRI_FAIL("Out of memory");
+		goto err;
+	}
+*/
+	//TEE_MemMove(dig, dig_msg, 100);			//	
+	
+	char *dig = TEE_Malloc(params[0].memref.size, 0);
+	TEE_MemMove(dig, params[0].memref.buffer, params[0].memref.size);					
+	dig_len=params[0].memref.size;
+	// Curve 
+	ecdsa_attrs[0].attributeID = TEE_ATTR_ECC_CURVE;
+	ecdsa_attrs[0].content.value.a = curve;
+	ecdsa_attrs[0].content.value.b = 0;
+
+	//Allocate transient object
+	ret = TEE_AllocateTransientObject(TEE_TYPE_ECDSA_KEYPAIR, key_size, &ecdsa_keypair);
+	if (ret != TEE_SUCCESS) {
+		PRI_FAIL("Failed to alloc transient object handle : 0x%x", ret);
+		goto err;
+	}
+	//Generate key
+	ret = TEE_GenerateKey(ecdsa_keypair, key_size, ecdsa_attrs, 1);
+	if (ret != TEE_SUCCESS) {
+		PRI_FAIL("Generate key failure : 0x%x", ret);
+		goto err;
+	}
+
+	///Print public keys
+	//x
+	void * anna_x= TEE_Malloc(1000, 0); 
+	size_t anna_len_x;
+	TEE_GetObjectBufferAttribute(ecdsa_keypair, TEE_ATTR_ECC_PUBLIC_VALUE_X, anna_x, &anna_len_x);
+	//y
+	void * anna_y= TEE_Malloc(1000, 0); 
+	size_t anna_len_y;
+	TEE_GetObjectBufferAttribute(ecdsa_keypair, TEE_ATTR_ECC_PUBLIC_VALUE_Y, anna_y, &anna_len_y);
+	//curve
+	/*
+	void * anna_curve= TEE_Malloc(1000, 0); 
+	size_t anna_len_curve;
+	TEE_GetObjectBufferAttribute(ecdsa_keypair, TEE_ATTR_ECC_CURVE, anna_curve, &anna_len_curve);
+	*/
+	//private
+	//void * private= TEE_Malloc(1000, 0); 
+	//size_t private_len;
+	//TEE_GetObjectBufferAttribute(ecdsa_keypair, TEE_ATTR_ECC_PRIVATE_VALUE, private, &private_len);
+
+	//print
+	PRI_OK("- with public key x value %s", convertNumToStr(anna_x, anna_len_x));
+	PRI_OK("- with public key y value %s", convertNumToStr(anna_y, anna_len_y));
+	//PRI_OK("- with curve value %s", convertNumToStr(anna_curve, anna_len_curve));
+	//PRI_OK("- with private key %s", convertNumToStr(private, private_len));
+	//SIGN
+	warp_asym_op(ecdsa_keypair, TEE_MODE_SIGN, ecdsa_alg, ecdsa_attrs, 1,
+				 dig, dig_len, sig, &sig_len);   ////////////TODO dig_len= params[0].memref.size
+
+	TEE_MemMove(params[1].memref.buffer, sig, sig_len);
+	params[1].memref.size=sig_len;					
+
+	fn_ret = 0; // OK 
+	err:
+	TEE_FreeTransientObject(ecdsa_keypair);
+	TEE_Free(dig);								//
+	TEE_Free(sig);
+	TEE_Free(anna_x);
+	TEE_Free(anna_y);
+
+	if (fn_ret == 0)
+		//PRI_OK("- with key size %u", keysize);
+	return fn_ret;
+
+}//end ECDSA_sign function
